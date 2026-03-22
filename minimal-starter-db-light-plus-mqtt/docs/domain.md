@@ -1,3 +1,4 @@
+```mermaid
 erDiagram 
   Person ||--o{ Assignment: leiht
   Device ||--o| Assignment: herausgabe
@@ -19,3 +20,4 @@ erDiagram
    int Device-ID FK
    date Assignment_Date
    date Return-Date }
+```
