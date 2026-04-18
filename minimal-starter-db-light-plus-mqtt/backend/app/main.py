@@ -1,8 +1,10 @@
-from fastapi import FastAPI, Request, Response, Query, HTTPException, status
+from fastapi import FastAPI, Request, Response, Query, HTTPException, status, Form
 from fastapi.templating import Jinja2Templates
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
-import os, io, csv
 from .db import get_conn
+
+import os, io, csv
 import paho.mqtt.client as mqtt
 
 app = FastAPI(title="Inventar-App", version="0.1.0")
@@ -215,3 +217,104 @@ async def mqtt_publish(topic: str = Query(...), payload: str = Query(...)):
     c.publish(topic, payload, qos=0, retain=False)
     c.disconnect()
     return {"ok": True, "topic": topic, "payload": payload}
+
+
+#---------------------------------------------------
+
+
+# 1) Inventar-Übersichtsseite
+@app.get("/inventory")
+async def inventory_overview(request: Request):
+    sql_devices = """
+        select d.device_id,
+               d.serial_number,
+               d.inventory_code,
+               d.note,
+               dt.name as device_type_name,
+               l.name  as location_name,
+               case
+                   when exists (
+                       select 1 from assignment a
+                       where a.device_id = d.device_id
+                         and a.returned_at is null
+                   )
+                   then 'ausgeliehen'
+                   else 'frei'
+               end as status
+        from device d
+        join device_type dt on dt.device_type_id = d.device_type_id
+        join location     l on l.location_id     = d.location_id
+        order by d.device_id;
+    """
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(sql_devices)
+        devices = cur.fetchall()
+
+    return templates.TemplateResponse(
+        "inventory.html",
+        {
+            "request": request,
+            "title": "Inventar",
+            "devices": devices,
+        },
+    )
+
+
+# 2) Formular „Gerät hinzufügen“ (GET zeigt Formular)
+@app.get("/inventory/devices/new")
+async def new_device_form(request: Request):
+    sql_types = "select device_type_id, name from device_type order by name;"
+    sql_locations = "select location_id, name from location order by name;"
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(sql_types)
+        device_types = cur.fetchall()
+        cur.execute(sql_locations)
+        locations = cur.fetchall()
+
+    return templates.TemplateResponse(
+        "device_form.html",
+        {
+            "request": request,
+            "title": "Gerät hinzufügen",
+            "device_types": device_types,
+            "locations": locations,
+        },
+    )
+
+
+# 3) Formular-Submit „Gerät hinzufügen“ (POST verarbeitet Formular)
+@app.post("/inventory/devices/new")
+async def create_device_from_form(
+    request: Request,
+    device_type_id: int = Form(...),
+    location_id: int = Form(...),
+    serial_number: str = Form(...),
+    inventory_code: str | None = Form(None),
+    note: str | None = Form(None),
+    ):
+    sql = """
+        insert into device (device_type_id, location_id, serial_number, inventory_code, note)
+        values (%(device_type_id)s, %(location_id)s, %(serial_number)s, %(inventory_code)s, %(note)s);
+    """
+    data = {
+        "device_type_id": device_type_id,
+        "location_id": location_id,
+        "serial_number": serial_number,
+        "inventory_code": inventory_code,
+        "note": note,
+    }
+
+    try:
+        with get_conn() as conn, conn.cursor() as cur:
+            cur.execute(sql, data)
+    except Exception as ex:
+        # IR-01: serial_number eindeutig -> Fehler z. B. wieder auf Formularseite zurückleiten
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Device with serial_number '{serial_number}' already exists or invalid data: {ex}",
+        )
+
+    # Nach erfolgreichem Insert zurück zur Übersicht
+    return RedirectResponse(url="/inventory", status_code=status.HTTP_303_SEE_OTHER)
