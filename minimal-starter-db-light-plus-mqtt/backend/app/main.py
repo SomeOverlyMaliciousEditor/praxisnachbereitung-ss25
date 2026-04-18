@@ -4,7 +4,7 @@ from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from .db import get_conn
 
-import os, io, csv
+import os, io, csv, json
 import paho.mqtt.client as mqtt
 
 app = FastAPI(title="Inventar-App", version="0.1.0")
@@ -145,7 +145,15 @@ async def create_assignment(payload: AssignmentCreate):
 
     # MQTT-Event für Ausleihe
     c = mqtt_client()
-    c.publish("inventory/assignments/issued", str({"device_id": data["device_id"], "person_id": data["person_id"]}), qos=0, retain=False)
+    mqtt_data = json.dumps(
+        {
+            "assignment_id": row["assignment_id"],
+            "device_id": data["device_id"],
+            "person_id": data["person_id"],
+            "issued_at": row["issued_at"].isoformat(),
+        }
+    )
+    c.publish("inventory/assignments/issued", mqtt_data, qos=0, retain=False)
     c.disconnect()
 
     return row
@@ -166,9 +174,20 @@ async def return_assignment(assignment_id: int):
         if not row:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active assignment not found")
 
-    # MQTT-Event für Rückgabe
+
+    # MQTT-Event: Rückgabe
     c = mqtt_client()
-    c.publish("inventory/assignments/returned", str({"assignment_id": assignment_id}), qos=0, retain=False)
+    c.publish(
+        "inventory/assignments/returned",
+        str({
+            "assignment_id": assignment_id,
+            "device_id": row["device_id"],
+            "person_id": row["person_id"],
+            "returned_at": row["returned_at"].isoformat(),
+        }),
+        qos=0,
+        retain=False,
+    )
     c.disconnect()
 
     return row
