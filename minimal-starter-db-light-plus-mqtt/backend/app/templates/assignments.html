@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Ausleihen</h1>
+
+<h2>Neue Ausleihe</h2>
+<form method="post" action="/inventory/assignments/new">
+  <div class="mb-3">
+    <label for="person_id" class="form-label">Person</label>
+    <select id="person_id" name="person_id" class="form-select" required>
+      <option value="" disabled selected>Bitte wählen...</option>
+      {% for p in persons %}
+        <option value="{{ p.person_id }}">{{ p.first_name }} {{ p.last_name }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="mb-3">
+    <label for="device_id" class="form-label">Gerät (nur freie)</label>
+    <select id="device_id" name="device_id" class="form-select" required>
+      <option value="" disabled selected>Bitte wählen...</option>
+      {% for d in free_devices %}
+        <option value="{{ d.device_id }}">{{ d.serial_number }} ({{ d.device_type_name }} @ {{ d.location_name }})</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="btn">Ausgeben</button>
+  <a href="/inventory" class="btn btn-secondary">Zur Inventar-Übersicht</a>
+</form>
+
+<h2 style="margin-top:2rem;">Aktive Ausleihen</h2>
+<table>
+  <thead>
+    <tr>
+      <th>ID</th>
+      <th>Person</th>
+      <th>Gerät</th>
+      <th>Typ</th>
+      <th>Ausgegeben am</th>
+      <th>Aktion</th>
+    </tr>
+  </thead>
+  <tbody>
+  {% for a in assignments %}
+    <tr>
+      <td>{{ a.assignment_id }}</td>
+      <td>{{ a.first_name }} {{ a.last_name }}</td>
+      <td>{{ a.serial_number }}</td>
+      <td>{{ a.device_type_name }}</td>
+      <td>{{ a.issued_at }}</td>
+      <td>
+        <form method="post" action="/inventory/assignments/{{ a.assignment_id }}/return" style="display:inline;">
+          <button type="submit" class="btn btn-secondary">Zurückgeben</button>
+        </form>
+      </td>
+    </tr>
+  {% else %}
+    <tr>
+      <td colspan="6"><em>Keine aktiven Ausleihen.</em></td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

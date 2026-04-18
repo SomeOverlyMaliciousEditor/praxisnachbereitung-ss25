@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Inventar{% endblock %}
+
+{% block content %}
+<h1>Inventar</h1>
+
+<p>
+    <a href="/inventory/devices/new" class="btn btn-primary">Gerät hinzufügen</a>
+</p>
+
+<table class="table table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Seriennummer</th>
+            <th>Inventar-Code</th>
+            <th>Typ</th>
+            <th>Standort</th>
+            <th>Status</th>
+            <th>Notiz</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for d in devices %}
+        <tr>
+            <td>{{ d.device_id }}</td>
+            <td>{{ d.serial_number }}</td>
+            <td>{{ d.inventory_code or "-" }}</td>
+            <td>{{ d.device_type_name }}</td>
+            <td>{{ d.location_name }}</td>
+            <td>
+                {% if d.status == "ausgeliehen" %}
+                    <span class="badge bg-danger">ausgeliehen</span>
+                {% else %}
+                    <span class="badge bg-success">frei</span>
+                {% endif %}
+            </td>
+            <td>{{ d.note or "" }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+
+{% endblock %}

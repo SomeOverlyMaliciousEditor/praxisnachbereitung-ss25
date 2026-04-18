@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+
+{% block title %}Gerät hinzufügen{% endblock %}
+
+{% block content %}
+<h1>Gerät hinzufügen</h1>
+
+<form method="post" action="/inventory/devices/new">
+    <div class="mb-3">
+        <label for="device_type_id" class="form-label">Gerätetyp</label>
+        <select id="device_type_id" name="device_type_id" class="form-select" required>
+            <option value="" disabled selected>Bitte wählen...</option>
+            {% for t in device_types %}
+                <option value="{{ t.device_type_id }}">{{ t.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label for="location_id" class="form-label">Standort</label>
+        <select id="location_id" name="location_id" class="form-select" required>
+            <option value="" disabled selected>Bitte wählen...</option>
+            {% for loc in locations %}
+                <option value="{{ loc.location_id }}">{{ loc.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="mb-3">
+        <label for="serial_number" class="form-label">Seriennummer</label>
+        <input type="text" id="serial_number" name="serial_number" class="form-control" required>
+    </div>
+
+    <div class="mb-3">
+        <label for="inventory_code" class="form-label">Inventar-Code (optional)</label>
+        <input type="text" id="inventory_code" name="inventory_code" class="form-control">
+    </div>
+
+    <div class="mb-3">
+        <label for="note" class="form-label">Notiz (optional)</label>
+        <textarea id="note" name="note" class="form-control" rows="3"></textarea>
+    </div>
+
+    <button type="submit" class="btn btn-primary">Speichern</button>
+    <a href="/inventory" class="btn btn-secondary">Abbrechen</a>
+</form>
+
+{% endblock %}
