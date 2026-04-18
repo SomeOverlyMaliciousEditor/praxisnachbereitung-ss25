@@ -339,3 +339,78 @@ async def create_device_from_form(
 
     # Nach erfolgreichem Insert zurück zur Übersicht
     return RedirectResponse(url="/inventory", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@app.get("/inventory/assignments")
+async def inventory_assignments(request: Request):
+    sql_assignments = """
+        select a.assignment_id, a.device_id, a.person_id, a.issued_at, a.returned_at,
+               d.serial_number,
+               dt.name as device_type_name,
+               p.first_name, p.last_name
+        from assignment a
+        join device      d  on d.device_id       = a.device_id
+        join device_type dt on dt.device_type_id = d.device_type_id
+        join person      p  on p.person_id       = a.person_id
+        where a.returned_at is null
+        order by a.issued_at desc;
+    """
+    sql_persons = "select person_id, first_name, last_name from person order by last_name, first_name;"
+    sql_free_devices = """
+        select d.device_id, d.serial_number,
+               dt.name as device_type_name,
+               l.name  as location_name
+        from device d
+        join device_type dt on dt.device_type_id = d.device_type_id
+        join location     l on l.location_id     = d.location_id
+        where not exists (
+            select 1 from assignment a
+            where a.device_id = d.device_id
+              and a.returned_at is null
+        )
+        order by d.device_id;
+    """
+
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(sql_assignments)
+        assignments = cur.fetchall()
+        cur.execute(sql_persons)
+        persons = cur.fetchall()
+        cur.execute(sql_free_devices)
+        free_devices = cur.fetchall()
+
+    return templates.TemplateResponse(
+        "assignments.html",
+        {
+            "request": request,
+            "title": "Ausleihen",
+            "assignments": assignments,
+            "persons": persons,
+            "free_devices": free_devices,
+        },
+    )
+
+
+@app.post("/inventory/assignments/new")
+async def create_assignment_from_form(
+    person_id: int = Form(...),
+    device_id: int = Form(...),
+):
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            "insert into assignment (device_id, person_id) values (%(device_id)s, %(person_id)s);",
+            {"device_id": device_id, "person_id": person_id},
+        )
+    return RedirectResponse(url="/inventory/assignments", status_code=303)
+
+
+@app.post("/inventory/assignments/{assignment_id}/return")
+async def return_assignment_from_ui(assignment_id: int):
+    # internen API-Endpoint aufrufen (DB-Update + MQTT)
+    await return_assignment(assignment_id)
+
+    # danach zurück zur Ausleihen-Seite
+    return RedirectResponse(
+        url="/inventory/assignments",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
