@@ -21,7 +21,7 @@ services:
       - "1883:1883"
       - "9001:9001"
     volumes:
-      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ./mqtt/mosquitto.conf:/mosquitto/config/mosquitto.conf:Z,ro
 
   api:
     build: .
@@ -38,5 +38,5 @@ services:
       - MQTT_HOST=mqtt
       - MQTT_PORT=1883
     volumes:
-      - ./backend:/app/backend:rw
-      - ./.env:/app/.env:ro
+      - ./backend:/app/backend:Z,rw
+      - ./.env:/app/.env:Z,ro
