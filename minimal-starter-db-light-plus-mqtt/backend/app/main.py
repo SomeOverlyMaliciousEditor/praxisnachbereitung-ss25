@@ -123,14 +123,14 @@ async def list_active_assignments():
 async def create_assignment(payload: AssignmentCreate):
     # IR-02: Ein Device darf maximal eine aktive Ausleihe haben
     check_sql = """
-    select 1 from assignment
-    where device_id = %(device_id)s and returned_at is null
-    limit 1;
+        select 1 from assignment
+        where device_id = %(device_id)s and returned_at is null
+        limit 1;
     """
     insert_sql = """
-    insert into assignment (device_id, person_id)
-    values (%(device_id)s, %(person_id)s)
-    returning assignment_id, issued_at, returned_at;
+        insert into assignment (device_id, person_id)
+        values (%(device_id)s, %(person_id)s)
+        returning assignment_id, issued_at, returned_at;
     """
     data = payload.dict()
     with get_conn() as conn, conn.cursor() as cur:
@@ -138,9 +138,12 @@ async def create_assignment(payload: AssignmentCreate):
         exists = cur.fetchone()
         if exists:
             # zweite aktive Ausleihe -> 409
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Device already has an active assignment")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Device already has an active assignment",
+            )
 
-        cur.execute(insert_sql, {"device_id": data["device_id"], "person_id": data["person_id"]})
+        cur.execute(insert_sql, data)
         row = cur.fetchone()
 
     # MQTT-Event für Ausleihe
@@ -161,33 +164,32 @@ async def create_assignment(payload: AssignmentCreate):
 
 @app.post("/assignments/{assignment_id}/return")
 async def return_assignment(assignment_id: int):
-    # IR-03: returned_at darf nicht vor issued_at liegen – wird hier über now() sichergestellt
     sql = """
-    update assignment
-    set returned_at = now()
-    where assignment_id = %(assignment_id)s and returned_at is null
-    returning assignment_id, device_id, person_id, issued_at, returned_at;
+        update assignment
+        set returned_at = now()
+        where assignment_id = %(assignment_id)s and returned_at is null
+        returning assignment_id, device_id, person_id, issued_at, returned_at;
     """
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(sql, {"assignment_id": assignment_id})
         row = cur.fetchone()
         if not row:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Active assignment not found")
-
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Active assignment not found",
+            )
 
     # MQTT-Event: Rückgabe
     c = mqtt_client()
-    c.publish(
-        "inventory/assignments/returned",
-        str({
+    mqtt_data = json.dumps(
+        {
             "assignment_id": assignment_id,
             "device_id": row["device_id"],
             "person_id": row["person_id"],
             "returned_at": row["returned_at"].isoformat(),
-        }),
-        qos=0,
-        retain=False,
+        }
     )
+    c.publish("inventory/assignments/returned", mqtt_data, qos=0, retain=False)
     c.disconnect()
 
     return row
