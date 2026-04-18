@@ -1,6 +1,11 @@
 {
   "name": "DB-Light + MQTT Starter",
   "image": "mcr.microsoft.com/devcontainers/python:3.12",
+
+  // Fixes permission issues with rootless Podman on Fedora/SELinux systems.
+  "remoteUser": "vscode",
+  "runArgs": [ "--userns=keep-id" ],
+
   "forwardPorts": [
     8000,
     5432,
