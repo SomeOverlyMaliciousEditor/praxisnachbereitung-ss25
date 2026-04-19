@@ -39,6 +39,7 @@ create table if not exists assignment (
   person_id     int  not null references person(person_id) on delete restrict,
   issued_at     timestamp not null default now(),
   returned_at   timestamp,
+  damage_note   text,
   check (returned_at is null or returned_at >= issued_at)
 );
 

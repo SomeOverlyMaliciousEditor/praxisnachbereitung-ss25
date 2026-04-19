@@ -6,6 +6,7 @@ from .db import get_conn
 
 import os, io, csv, json
 import paho.mqtt.client as mqtt
+import pandas as pd
 
 app = FastAPI(title="Inventar-App", version="0.1.0")
 templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "templates"))
@@ -13,11 +14,60 @@ templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "t
 MQTT_HOST = os.getenv("MQTT_HOST", "mqtt")
 MQTT_PORT = int(os.getenv("MQTT_PORT", "1883"))
 
+# Assignment-Exportsicht fuer Reporting und Dateidownloads.
+ASSIGNMENT_EXPORT_COLUMNS = [
+    "assignment_id",
+    "assignment_status",
+    "issued_at",
+    "returned_at",
+    "damage_note",
+    "device_id",
+    "serial_number",
+    "inventory_code",
+    "device_type_name",
+    "location_name",
+    "person_id",
+    "person_name",
+    "person_email",
+]
+
+ASSIGNMENT_EXPORT_SQL = """
+    select
+        a.assignment_id,
+        case
+            when a.returned_at is null then 'active'
+            else 'returned'
+        end as assignment_status,
+        a.issued_at,
+        a.returned_at,
+        a.damage_note,
+        d.device_id,
+        d.serial_number,
+        d.inventory_code,
+        dt.name as device_type_name,
+        l.name as location_name,
+        p.person_id,
+        concat_ws(' ', p.first_name, p.last_name) as person_name,
+        p.email as person_email
+    from assignment a
+    join device d on d.device_id = a.device_id
+    join device_type dt on dt.device_type_id = d.device_type_id
+    join location l on l.location_id = d.location_id
+    join person p on p.person_id = a.person_id
+    order by a.issued_at desc, a.assignment_id desc;
+"""
+
 
 def mqtt_client() -> mqtt.Client:
     c = mqtt.Client()
     c.connect(MQTT_HOST, MQTT_PORT, keepalive=30)
     return c
+
+
+def fetch_assignment_export_rows() -> list[dict]:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(ASSIGNMENT_EXPORT_SQL)
+        return cur.fetchall()
 
 
 @app.get("/health")
@@ -117,6 +167,54 @@ async def list_active_assignments():
         cur.execute(sql)
         rows = cur.fetchall()
     return rows
+
+
+@app.get("/assignments.csv")
+async def assignments_csv():
+    rows = fetch_assignment_export_rows()
+
+    buf = io.StringIO()
+    writer = csv.DictWriter(
+        buf,
+        fieldnames=ASSIGNMENT_EXPORT_COLUMNS,
+        delimiter=";",
+        lineterminator="\n",
+    )
+    writer.writeheader()
+    for row in rows:
+        writer.writerow(row)
+
+    data = buf.getvalue().encode("utf-8-sig")
+    headers = {"Content-Disposition": 'attachment; filename="assignments.csv"'}
+    return Response(content=data, media_type="text/csv; charset=utf-8", headers=headers)
+
+
+@app.get("/assignments.xlsx")
+async def assignments_xlsx():
+    rows = fetch_assignment_export_rows()
+    df = pd.DataFrame(rows, columns=ASSIGNMENT_EXPORT_COLUMNS)
+
+    out = io.BytesIO()
+    with pd.ExcelWriter(
+        out,
+        engine="openpyxl",
+        datetime_format="YYYY-MM-DD HH:MM:SS",
+    ) as writer:
+        df.to_excel(writer, index=False, sheet_name="Assignments")
+        worksheet = writer.sheets["Assignments"]
+        for idx, column in enumerate(df.columns, start=1):
+            max_len = max(
+                [len(str(column))]
+                + [len("" if value is None else str(value)) for value in df[column].tolist()]
+            )
+            worksheet.column_dimensions[chr(64 + idx)].width = min(max_len + 2, 40)
+
+    headers = {"Content-Disposition": 'attachment; filename="assignments.xlsx"'}
+    return Response(
+        content=out.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
 
 
 @app.post("/assignments", status_code=status.HTTP_201_CREATED)
